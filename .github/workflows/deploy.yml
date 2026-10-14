@@ -13,18 +13,19 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            *.zip
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
       - name: Unzip site
         run: |
           mkdir -p _site
-          unzip -q site.zip -d _site
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          [ -f media.zip ] && unzip -q -o media.zip -d _site
+        
