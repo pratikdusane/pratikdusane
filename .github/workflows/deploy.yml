@@ -1,0 +1,58 @@
+name: Deploy portfolio
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Find and unzip the site
+        shell: bash
+        run: |
+          set +e
+          echo "Files in the repo root:"; ls -la
+          # 1) the zip changed in this upload, 2) site.zip, 3) any site*.zip
+          Z=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -i '\.zip$' | head -1)
+          [ -z "$Z" ] && [ -f site.zip ] && Z=site.zip
+          [ -z "$Z" ] && Z=$(ls site*.zip 2>/dev/null | head -1)
+          if [ -z "$Z" ] || [ ! -f "$Z" ]; then
+            echo "::error::No site zip found. Upload site.zip to the repo root (same level as README)."
+            exit 1
+          fi
+          echo "Using: $Z"
+          mkdir -p _site
+          unzip -o "$Z" -d _site > unzip.log
+          code=$?
+          tail -n 3 unzip.log
+          if [ $code -gt 1 ]; then echo "::error::Could not unzip $Z (code $code)"; cat unzip.log; exit 1; fi
+          # if the zip had a folder inside, move its contents up
+          if [ ! -f _site/index.html ]; then
+            inner=$(dirname "$(find _site -maxdepth 3 -name index.html | head -1)")
+            if [ -n "$inner" ] && [ "$inner" != "_site" ]; then
+              shopt -s dotglob; mv "$inner"/* _site/ ; rmdir "$inner" 2>/dev/null
+            fi
+          fi
+          rm -rf _site/__MACOSX
+          if [ ! -f _site/index.html ]; then echo "::error::index.html not found inside $Z"; exit 1; fi
+          echo "files deployed: $(find _site -type f | wc -l)"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
